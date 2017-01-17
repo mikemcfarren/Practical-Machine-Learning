@@ -1,0 +1,142 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Mike McFarren"
+date: "January 16, 2017"
+output: html_document
+---
+
+## Executive Summary
+
+This report uses machine learning algorithms to  predict the manner in which the subjects performed weight lifting exercises. The data was collected from accelerometers on the belt, forearm, arm, and dumbell from 6 participants. The outcome variable has five classes and the total number of predictors are 159.
+
+
+## Data
+
+The training data for this project are available at the following location:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+And the test data are available at the following location:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+<br>
+
+#### Set up and initialization
+
+```{r setup, warning=FALSE, message=FALSE}
+library(knitr)
+
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+
+library(RCurl)
+library(ElemStatLearn)
+library(caret)
+library(rpart)
+library(randomForest)
+
+set.seed(37027)
+
+datafolder <- "E:/Coursera/Practical-Machine-Learning/";
+outputfolder <- "E:/Coursera/Practical-Machine-Learning/";
+```
+<br>
+
+#### Load and prepare the data
+
+```{r prepdata, warning=FALSE, message=FALSE}
+trainingUrl <- getURL("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+traincsv  <- read.csv(text = trainingUrl, header=TRUE, sep=",", na.strings=c("NA",""))
+
+# remove a couple unneeded columns
+traindata <- subset(traincsv, select=-c(X, user_name,raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+```
+<br>
+
+#### Create data partitions
+
+The training set should be large enough to achieve relatively high accuracy.  The cross validation set also needs to be large enough to give a good indication of the out of sample error.
+
+The training data set was split up into one portion (70%) for model building and another portion (30%) for cross-validation.
+
+
+```{r partition, warning=FALSE, message=FALSE,results='hide'}
+
+inTrain = createDataPartition(traindata$classe, p=0.70, list=FALSE)
+training = traindata[inTrain,]
+validating = traindata[-inTrain,]
+
+# size of the train data set
+dim(training)
+
+# size of validation data set
+dim(validating)
+
+```
+
+#### Data Exploration and Cleansing
+
+```{r cleandata, warning=FALSE, message=FALSE}
+# We have defined the requirements of the data such that we will ignore any observation where 50% or more of the fields do not contain any data
+
+sum( ( colSums( !is.na(training[ , -ncol(training) ] ) ) < 0.5 * nrow(training) ) )
+```
+
+```{r cleandata2, warning=FALSE, message=FALSE, results='hide'}
+# remove (100) columns that fail to satisfy requirements above. then re-adjust training and validation datasets
+
+keepcols <- c( ( colSums( !is.na( training[ , -ncol(training) ] ) ) >= 0.5 * nrow(training) ) )
+
+training   <- training[,keepcols]
+validating <- validating[,keepcols]
+
+# size of the train data set
+dim(training)
+
+# size of validation data set
+dim(validating)
+```
+
+### Model Building
+
+
+Random forest was the chosen prediction algorithm This model was built on the training cohort and then tested on the validating cohort.  We'll also use the confusion matrix so we can get a visualization on the performance of the random forest algorithm.
+
+```{r , warning=FALSE, message=FALSE, results='hide', cache=TRUE}
+model <- train(classe ~ ., data=training, method="rf", trControl=trainControl(method="cv", verboseIter=TRUE, number=4), ntrees=100)
+
+predictV <- predict(model, validating)
+
+confusionMatrix <- confusionMatrix(predictV, validating$classe)
+```
+```{r}
+confusionMatrix$table
+```
+
+The random forest model has 99.4% out of sample accuracy, or 0.6% out of sample error.
+
+
+```{r, warning=FALSE, message=FALSE}
+confusionMatrix$overall
+```
+
+### Predict
+
+Finally, we use the random forest model to predict on the testing set.
+
+```{r, warning=FALSE, message=FALSE}
+testingUrl <- getURL("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+testcsv  <- read.csv(text = testingUrl, header=TRUE, sep=",", na.strings=c("NA",""))
+testing <- testcsv
+
+testing.predict <- predict(model, testing)
+testing.predict
+```
+
+
+## Results
+
+We used 52 variables to build the random forest model with 4-fold cross-validation and 100 trees.  The out-of-sample error was 0.6%.  The trained algorithm correctly identified 20 of 20 test cases.
+
+<br><br>
